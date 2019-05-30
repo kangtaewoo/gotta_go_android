@@ -6,10 +6,12 @@
     android:layout_height="match_parent"
     tools:context=".ui.MainActivity">
 
-    <com.google.android.gms.maps.MapView
+    <fragment
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:id="@+id/mapView" />
+        android:id="@+id/map"
+        class="com.google.android.gms.maps.MapFragment"
+        />
 
     <!--<SearchView-->
         <!--android:layout_width="match_parent"-->

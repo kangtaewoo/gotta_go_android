@@ -2,10 +2,14 @@ package com.toilet.gottago.ui;
 
 import android.Manifest;
 import android.app.Dialog;
+import android.app.FragmentManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
 import android.location.LocationManager;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -15,50 +19,82 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.SearchView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.MapView;
+import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.toilet.gottago.R;
 
+import java.io.IOException;
+import java.util.List;
+
 import static com.toilet.gottago.util.Constants.ERROR_DIALOG_REQUEST;
-import static com.toilet.gottago.util.Constants.MAPVIEW_BUNDLE_KEY;
 import static com.toilet.gottago.util.Constants.PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION;
 import static com.toilet.gottago.util.Constants.PERMISSIONS_REQUEST_ENABLE_GPS;
 
 public class MainActivity extends AppCompatActivity implements
-        View.OnClickListener,
-        OnMapReadyCallback {
-
+        View.OnClickListener
+        , OnMapReadyCallback
+        , GoogleMap.OnMyLocationButtonClickListener
+{
     private static final String TAG = "MainActivity";
     private boolean mLocationPermissionGranted = false;
-    private MapView mMapView;
+    private SearchView searchView;
+    private GoogleMap mMap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        initGoogleMap(savedInstanceState);
 
+
+        FragmentManager fragmentManager = getFragmentManager();
+        MapFragment mapFragment = (MapFragment) fragmentManager
+                .findFragmentById(R.id.map);
+        mapFragment.getMapAsync(this);
+
+//        initSearchView(savedInstanceState);
     }
 
-    private void initGoogleMap(Bundle savedInstanceState) {
-        // *** IMPORTANT ***
-        // MapView requires that the Bundle you pass contain _ONLY_ MapView SDK
-        // objects or sub-Bundles.
-        Bundle mapViewBundle = null;
-        if (savedInstanceState != null) {
-            mapViewBundle = savedInstanceState.getBundle(MAPVIEW_BUNDLE_KEY);
-        }
-        mMapView = findViewById(R.id.mapView);
-        mMapView.onCreate(mapViewBundle);
-        mMapView.getMapAsync(this);
-    }
+//    private void initSearchView(Bundle savedInstanceState) {
+//        searchView = findViewById(R.id.sv_location);
+//        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+//            //검색어 입력시
+//            @Override
+//            public boolean onQueryTextSubmit(String query) {
+//                String location = searchView.getQuery().toString();
+//                List<Address> addressList = null;
+//
+//                if (location != null || !location.equals("")) {
+//                    Geocoder geocoder = new Geocoder((MainActivity.this));
+//                    try {
+//                        addressList = geocoder.getFromLocationName(location, 1);
+//                    } catch (IOException e) {
+////                        Log.d(TAG, "isServicesOK: an error occured but we can fix it");
+//                        e.printStackTrace();
+//                    }
+//                    Address address = addressList.get(0);
+//                    LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
+////                    mMap.addMarker
+//                }
+//                return false;
+//            }
+//
+//            //검색어 완료시
+//            @Override
+//            public boolean onQueryTextChange(String newText) {
+//                return false;
+//            }
+//        });
+//    }
+
 
     private boolean checkMapServices() {
         if (isServicesOK()) {
@@ -161,7 +197,6 @@ public class MainActivity extends AppCompatActivity implements
         super.onResume();
         if (checkMapServices()) {
             if (mLocationPermissionGranted) {
-                mMapView.onResume();
 //                getChatrooms();
             } else {
                 getLocationPermission();
@@ -169,58 +204,36 @@ public class MainActivity extends AppCompatActivity implements
         }
     }
 
+
     @Override
-    public void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
+    public void onMapReady(GoogleMap googleMap) {
+        mMap = googleMap;
+//        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
 
-        Bundle mapViewBundle = outState.getBundle(MAPVIEW_BUNDLE_KEY);
-        if (mapViewBundle == null) {
-            mapViewBundle = new Bundle();
-            outState.putBundle(MAPVIEW_BUNDLE_KEY, mapViewBundle);
-        }
+        mMap.setOnMyLocationButtonClickListener(this);
+        enableMyLocation();
 
-        mMapView.onSaveInstanceState(mapViewBundle);
     }
 
-    @Override
-    public void onStart() {
-        super.onStart();
-        mMapView.onStart();
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-        mMapView.onStop();
-    }
-
-    @Override
-    public void onMapReady(GoogleMap map) {
-        map.addMarker(new MarkerOptions().position(new LatLng(0, 0)).title("Marker"));
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+    private void enableMyLocation() {
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                && ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_COARSE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             return;
         }
-        map.setMyLocationEnabled(true);
+        mMap.setMyLocationEnabled(true);
     }
 
+    //현재위치 버튼 클릭시 내위치 표시
     @Override
-    public void onPause() {
-        mMapView.onPause();
-        super.onPause();
+    public boolean onMyLocationButtonClick() {
+        Toast.makeText(this, "MyLocation button clicked", Toast.LENGTH_SHORT).show();
+        // Return false so that we don't consume the event and the default behavior still occurs
+        // (the camera animates to the user's current position).
+        return false;
     }
 
-    @Override
-    public void onDestroy() {
-        mMapView.onDestroy();
-        super.onDestroy();
-    }
-
-    @Override
-    public void onLowMemory() {
-        super.onLowMemory();
-        mMapView.onLowMemory();
-    }
 }
