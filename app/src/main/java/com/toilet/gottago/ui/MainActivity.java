@@ -1,11 +1,8 @@
 package com.toilet.gottago.ui;
 
 import android.Manifest;
-import android.app.Dialog;
 import android.app.FragmentManager;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Address;
 import android.location.Geocoder;
@@ -14,52 +11,73 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.SearchView;
 import android.widget.Toast;
 
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.google.firebase.firestore.QuerySnapshot;
 import com.toilet.gottago.R;
+import com.toilet.gottago.util.Toilet;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
-import static com.toilet.gottago.util.Constants.ERROR_DIALOG_REQUEST;
-import static com.toilet.gottago.util.Constants.PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION;
-import static com.toilet.gottago.util.Constants.PERMISSIONS_REQUEST_ENABLE_GPS;
 
 public class MainActivity extends AppCompatActivity implements
-        OnMapReadyCallback
-        , GoogleMap.OnMyLocationButtonClickListener {
+        OnMapReadyCallback {
     private static final String TAG = "MainActivity";
-    private boolean mLocationPermissionGranted = false;
     private LocationManager manager;
-    private LatLng curPoint;
-    private SearchView searchView;
     private GoogleMap mMap;
+    private FirebaseFirestore mDatabase = FirebaseFirestore.getInstance();
+//    private SearchView searchView;
+//    private DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference();
+//    private DatabaseReference ref;
+
+    private boolean isMoved = false;
+
+    public LatLng curPoint = new LatLng(37.4979,127.028);
+    public String cityName_gu = "강남구";
+    public String cityName_dong = "역삼동";
+
+    public List<Toilet> itemList = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-
         FragmentManager fragmentManager = getFragmentManager();
         MapFragment mapFragment = (MapFragment) fragmentManager
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+        Button btn = findViewById(R.id.btn);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                setMarker();
+                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(curPoint, 17));
+            }
+        });
+
         startLocationService();
 
 //        initSearchView(savedInstanceState);
@@ -84,80 +102,108 @@ public class MainActivity extends AppCompatActivity implements
         long minTime = 5000;
         float minDistance = 0;
 
-        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                minTime, minDistance, gpsListener);
+        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, minTime, minDistance, gpsListener);
 
         Toast.makeText(getApplicationContext(),"Location Service started", Toast.LENGTH_SHORT).show();
     }
 
     private class GPSListener implements LocationListener{
+//        public Double distance = (6371 * Math.acos( Math.cos( Math.toRadians( curPoint.latitude ) ) * Math.cos( Math.toRadians( 위도) )
+//                * Math.cos( Math.toRadians( 경도) - Math.toRadians(curPoint.longitude)) + Math.sin( Math.toRadians(curPoint.latitude) ) * Math.sin( Math.toRadians(위도) ) ) );
 
         @Override
         public void onLocationChanged(Location location){
             Double lat = location.getLatitude();
             Double lng = location.getLongitude();
-            String msg = "Lattitude:" + lat + "\nLongitude:" + lng;
-            Log.i("GPSListener",msg);
-            showCurrentLocation(lat, lng);
+            isMoved = checkMoving(lat, lng);
+            if(isMoved){
+                String msg = "Lattitude:" + lat + "Longitude:" + lng;
+                Log.i("GPSListener",msg);
+                itemList.clear();
+                showCurrentLocation(lat, lng);
+                getItemInfo();
+            }
         }
 
         private void showCurrentLocation(Double lat, Double lng) {
-            LatLng curPoint = new LatLng(lat, lng);
-            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(curPoint, 15));
+            //움직였으면 curpoint 최신화
+            curPoint = new LatLng(lat, lng);
+            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(curPoint, 17));
         }
 
-        @Override
-        public void onStatusChanged(String provider, int status, Bundle extras) {
+        private boolean checkMoving(Double lat, Double lng) {
+            if(curPoint.latitude != lat || curPoint.longitude != lng){
+                //초기위치와 현재위치가 다르면 움직인것
+                return true;
+            } else {
+                return false;
+            }
         }
 
-        @Override
-        public void onProviderEnabled(String provider) {
+        private void getCityName(Double lat, Double lng) {
+            Geocoder geocoder = new Geocoder(getBaseContext(), Locale.getDefault());
+            List<Address> addresses;
+            try{
+                addresses = geocoder.getFromLocation(lat, lng, 1);
+//                cityName = addresses.get(0).getAddressLine(0);
+                cityName_gu = addresses.get(0).getSubLocality();
+                cityName_dong = addresses.get(0).getThoroughfare();
+                String msg = "current City Name:" + cityName_gu + " " + cityName_dong;
+                Log.i("GPSListener/", msg);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
-        @Override
-        public void onProviderDisabled(String provider) {
+        private void getItemInfo() {
+            getCityName(curPoint.latitude, curPoint.longitude);
+            mDatabase.collection("log_info")
+                    .whereEqualTo("gu_nm", cityName_gu)
+//                    .whereEqualTo("hnr_nam", cityName_dong)
+                    .get()
+                    .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
+                        @Override
+                        public void onComplete(@NonNull Task<QuerySnapshot> task) {
+                            if (task.isSuccessful()) {
+                                for (QueryDocumentSnapshot document : Objects.requireNonNull(task.getResult())) {
+//                                    Double item_lat = document.getDouble("lat");
+//                                    Double item_lng = document.getDouble("lng");
+                                    Toilet toilet = document.toObject(Toilet.class);
+                                    //반경
+                                    double distance = (6371 * Math.acos(Math.cos(Math.toRadians(curPoint.latitude)) * Math.cos(Math.toRadians(toilet.lat))
+                                            * Math.cos(Math.toRadians(toilet.lng) - Math.toRadians(curPoint.longitude)) + Math.sin(Math.toRadians(curPoint.latitude)) * Math.sin(Math.toRadians(toilet.lat))));
+                                    if (distance < 0.3) {
+                                        itemList.add(toilet);
+                                        Log.d(TAG, "item lat lng: " + toilet.lat + " / " + toilet.lng);
+                                    } else {
+                                        Log.d(TAG, "getItenInfo():Not match");
+                                    }
+                                }
+                            } else {
+                                Log.w(TAG, "Error getting documents.", task.getException());
+                            }
+                        }
+                    });
         }
+
+
+        @Override
+        public void onStatusChanged(String provider, int status, Bundle extras) { }
+        @Override
+        public void onProviderEnabled(String provider) { }
+        @Override
+        public void onProviderDisabled(String provider) { }
+
     }
-    
-//    private void initSearchView(Bundle savedInstanceState) {
-//        searchView = findViewById(R.id.sv_location);
-//        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-//            //검색어 입력시
-//            @Override
-//            public boolean onQueryTextSubmit(String query) {
-//                String location = searchView.getQuery().toString();
-//                List<Address> addressList = null;
-//
-//                if (location != null || !location.equals("")) {
-//                    Geocoder geocoder = new Geocoder((MainActivity.this));
-//                    try {
-//                        addressList = geocoder.getFromLocationName(location, 1);
-//                    } catch (IOException e) {
-////                        Log.d(TAG, "isServicesOK: an error occured but we can fix it");
-//                        e.printStackTrace();
-//                    }
-//                    Address address = addressList.get(0);
-//                    LatLng latLng = new LatLng(address.getLatitude(), address.getLongitude());
-////                    mMap.addMarker
-//                }
-//                return false;
-//            }
-//
-//            //검색어 완료시
-//            @Override
-//            public boolean onQueryTextChange(String newText) {
-//                return false;
-//            }
-//        });
-//    }
+
+
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-//        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(curPoint, 15));
         enableMyLocation();
-        mMap.setOnMyLocationButtonClickListener(this);
     }
+
 
     private void enableMyLocation() {
         if (ActivityCompat.checkSelfPermission(this,
@@ -171,13 +217,17 @@ public class MainActivity extends AppCompatActivity implements
         mMap.setMyLocationEnabled(true);
     }
 
-    //현재위치 버튼 클릭시 내위치 표시
-    @Override
-    public boolean onMyLocationButtonClick() {
-        Toast.makeText(this, "MyLocation button clicked", Toast.LENGTH_SHORT).show();
-        // Return false so that we don't consume the event and the default behavior still occurs
-        // (the camera animates to the user's current position).
-        return false;
+    public void setMarker() {
+        for(Toilet toilet : itemList){
+            MarkerOptions markerOptions = new MarkerOptions();
+            markerOptions
+                    .position(new LatLng(toilet.lat, toilet.lng))
+                    .title("화장실" + toilet.objectid);
+            //show marker
+            mMap.addMarker(markerOptions);
+        }
     }
+
+
 
 }
