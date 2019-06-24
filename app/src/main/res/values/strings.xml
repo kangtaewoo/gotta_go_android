@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Gottago</string>
+    <string name="google_map_api_key">AIzaSyBulbDZgR8aZ4xZ4PD9nsCHQZ_su8_IR8o</string>
 </resources>
